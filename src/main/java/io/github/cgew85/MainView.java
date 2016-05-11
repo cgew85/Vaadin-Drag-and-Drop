@@ -1,39 +1,47 @@
 package io.github.cgew85;
 
 import com.vaadin.data.Container;
-import com.vaadin.data.util.BeanItemContainer;
 import com.vaadin.data.util.HierarchicalContainer;
 import com.vaadin.event.DataBoundTransferable;
 import com.vaadin.event.dd.DragAndDropEvent;
 import com.vaadin.event.dd.DropHandler;
+import com.vaadin.event.dd.acceptcriteria.AcceptAll;
 import com.vaadin.event.dd.acceptcriteria.AcceptCriterion;
-import com.vaadin.event.dd.acceptcriteria.And;
 import com.vaadin.event.dd.acceptcriteria.ClientSideCriterion;
 import com.vaadin.event.dd.acceptcriteria.SourceIs;
 import com.vaadin.navigator.View;
 import com.vaadin.navigator.ViewChangeListener;
+import com.vaadin.shared.ui.dd.VerticalDropLocation;
 import com.vaadin.spring.annotation.SpringView;
 import com.vaadin.spring.annotation.ViewScope;
-import com.vaadin.ui.*;
+import com.vaadin.ui.AbstractSelect;
+import com.vaadin.ui.HorizontalLayout;
+import com.vaadin.ui.Tree;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
+
 import javax.annotation.PostConstruct;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * Created by cgew85 on 06.05.2016.
+ * Bilstein Group / Central Service Solutions
+ * poc_vaadin_dnd
+ * Created on 03.05.2016.
  */
-
 @SpringView(name = MainView.VIEW_NAME)
 @ViewScope
 public class MainView extends HorizontalLayout implements View {
 
-    public static final String VIEW_NAME = "MainView";
+    static final String VIEW_NAME = "MainView";
 
     private Tree treeA;
     private Tree treeB;
-    private Table table;
+    private Tree treeC;
 
     @Override
     public void enter(ViewChangeListener.ViewChangeEvent viewChangeEvent) {
@@ -47,14 +55,14 @@ public class MainView extends HorizontalLayout implements View {
 
         addComponent(getTreeA());
         addComponent(getTreeB());
-        addComponent(getTable());
+        addComponent(getTreeC());
 
-        initializeTreeA(new SourceIs(getTable()));
-        initializeTreeB(new SourceIs(getTable()));
-        initializeTable(new SourceIs(getTreeA(), getTreeB()));
+        initializeTreeA();
+        initializeTreeB();
+        initializeTreeC(new SourceIs(getTreeA(), getTreeB()));
     }
 
-    private void initializeTreeA(final ClientSideCriterion clientSideCriterion) {
+    private void initializeTreeA() {
         final HierarchicalContainer hierarchicalContainer = new HierarchicalContainer();
         treeA.setContainerDataSource(hierarchicalContainer);
         treeA.addContainerProperty("text", String.class, "");
@@ -73,63 +81,10 @@ public class MainView extends HorizontalLayout implements View {
         listOfGroups.add(groupOfItemsA);
         listOfGroups.add(groupOfItemsB);
 
-        listOfGroups.forEach(groupOfItems -> {
-            String groupName = groupOfItems.getGroupName();
-            hierarchicalContainer.addItem(groupName);
-            hierarchicalContainer.getItem(groupName).getItemProperty("text").setValue(groupName);
-            if(groupOfItems.getListOfItems().size() == 0) {
-                // Case: Node has no child elements
-                hierarchicalContainer.setChildrenAllowed(groupName, false);
-            } else {
-                // Case: Node has child elements
-                groupOfItems.getListOfItems().forEach(item -> {
-                    String itemName = item.getText();
-                    hierarchicalContainer.addItem(itemName);
-                    hierarchicalContainer.getItem(itemName).getItemProperty("text").setValue(itemName);
-                    hierarchicalContainer.setParent(itemName, groupName);
-                    hierarchicalContainer.setChildrenAllowed(itemName, false);
-                });
-
-                treeA.expandItemsRecursively(groupName);
-            }
-
-            treeA.setDropHandler(new DropHandler() {
-                @Override
-                public void drop(DragAndDropEvent dragAndDropEvent) {
-                    final DataBoundTransferable dataBoundTransferable = (DataBoundTransferable) dragAndDropEvent.getTransferable();
-                    final Container sourceContainer = dataBoundTransferable.getSourceContainer();
-                    final Object sourceItemId = dataBoundTransferable.getItemId();
-                    final com.vaadin.data.Item sourceItem = sourceContainer.getItem(sourceItemId);
-                    final String groupName = (String) sourceItem.getItemProperty("groupName").getValue();
-                    final String text = (String) sourceItem.getItemProperty("text").getValue();
-                    final AbstractSelect.AbstractSelectTargetDetails dropData = ((AbstractSelect.AbstractSelectTargetDetails) dragAndDropEvent.getTargetDetails());
-                    final Object targetItemId = dropData.getItemIdOver();
-                    if(targetItemId != null && groupName != null && text != null) {
-                        final String treeGroup = (String) targetItemId;
-                        if(treeGroup.equals(groupName)) {
-                            final Object newItemId = getTreeA().addItem();
-                            getTreeA().getItem(newItemId).getItemProperty("text").setValue(text);
-                            getTreeA().getItem(newItemId).getItemProperty("groupName").setValue(groupName);
-                            getTreeA().setParent(newItemId, targetItemId);
-                            getTreeA().setChildrenAllowed(newItemId, false);
-
-                            sourceContainer.removeItem(sourceItemId);
-                        } else {
-                            final String message = text + " is not a " + treeGroup.toLowerCase().replaceAll("s$", "");
-                            Notification.show(message, Notification.Type.WARNING_MESSAGE);
-                        }
-                    }
-                }
-
-                @Override
-                public AcceptCriterion getAcceptCriterion() {
-                    return new And(clientSideCriterion, Tree.TargetItemAllowsChildren.get(), AbstractSelect.AcceptItem.ALL);
-                }
-            });
-        });
+        listOfGroups.forEach(groupOfItems -> setupContainer(groupOfItems, hierarchicalContainer, treeA));
     }
 
-    private void initializeTreeB(final ClientSideCriterion clientSideCriterion) {
+    private void initializeTreeB() {
         final HierarchicalContainer hierarchicalContainer = new HierarchicalContainer();
         treeB.setContainerDataSource(hierarchicalContainer);
         treeB.addContainerProperty("text", String.class, "");
@@ -148,119 +103,120 @@ public class MainView extends HorizontalLayout implements View {
         listOfGroups.add(groupOfItemsC);
         listOfGroups.add(groupOfItemsD);
 
-        listOfGroups.forEach(groupOfItems -> {
-            String groupName = groupOfItems.getGroupName();
-            hierarchicalContainer.addItem(groupName);
-            hierarchicalContainer.getItem(groupName).getItemProperty("text").setValue(groupName);
-            if(groupOfItems.getListOfItems().size() == 0) {
-                // Case: Node has no child elements
-                hierarchicalContainer.setChildrenAllowed(groupName, false);
-            } else {
-                // Case: Node has child elements
-                groupOfItems.getListOfItems().forEach(item -> {
-                    String itemName = item.getText();
-                    hierarchicalContainer.addItem(itemName);
-                    hierarchicalContainer.getItem(itemName).getItemProperty("text").setValue(itemName);
-                    hierarchicalContainer.setParent(itemName, groupName);
-                    hierarchicalContainer.setChildrenAllowed(itemName, false);
-                });
-
-                treeB.expandItemsRecursively(groupName);
-            }
-
-            treeB.setDropHandler(new DropHandler() {
-                @Override
-                public void drop(DragAndDropEvent dragAndDropEvent) {
-                    final DataBoundTransferable dataBoundTransferable = (DataBoundTransferable) dragAndDropEvent.getTransferable();
-                    final Container sourceContainer = dataBoundTransferable.getSourceContainer();
-                    final Object sourceItemId = dataBoundTransferable.getItemId();
-                    final com.vaadin.data.Item sourceItem = sourceContainer.getItem(sourceItemId);
-                    final String groupName = (String) sourceItem.getItemProperty("groupName").getValue();
-                    final String text = (String) sourceItem.getItemProperty("text").getValue();
-                    final AbstractSelect.AbstractSelectTargetDetails dropData = ((AbstractSelect.AbstractSelectTargetDetails) dragAndDropEvent.getTargetDetails());
-                    final Object targetItemId = dropData.getItemIdOver();
-                    if(targetItemId != null && groupName != null && text != null) {
-                        final String treeGroup = (String) targetItemId;
-                        if(treeGroup.equals(groupName)) {
-                            final Object newItemId = getTreeB().addItem();
-                            getTreeB().getItem(newItemId).getItemProperty("text").setValue(text);
-                            getTreeB().getItem(newItemId).getItemProperty("groupName").setValue(groupName);
-                            getTreeB().setParent(newItemId, targetItemId);
-                            getTreeB().setChildrenAllowed(newItemId, false);
-
-                            sourceContainer.removeItem(sourceItemId);
-                        } else {
-                            final String message = text + " is not a " + treeGroup.toLowerCase().replaceAll("s$", "");
-                            Notification.show(message, Notification.Type.WARNING_MESSAGE);
-                        }
-                    }
-                }
-
-                @Override
-                public AcceptCriterion getAcceptCriterion() {
-                    return new And(clientSideCriterion, Tree.TargetItemAllowsChildren.get(), AbstractSelect.AcceptItem.ALL);
-                }
-            });
-        });
+        listOfGroups.forEach(groupOfItems -> setupContainer(groupOfItems, hierarchicalContainer, treeB));
     }
 
-    private void initializeTable(final ClientSideCriterion clientSideCriterion) {
-        final BeanItemContainer<TableItem> beanItemContainer = new BeanItemContainer<>(TableItem.class);
-        table.setContainerDataSource(beanItemContainer);
-        table.setVisibleColumns("groupName","text");
-        table.setDropHandler(new DropHandler() {
+    private void initializeTreeC(final ClientSideCriterion clientSideCriterion) {
+        final HierarchicalContainer hierarchicalContainer = new HierarchicalContainer();
+        treeC.setContainerDataSource(hierarchicalContainer);
+        treeC.addContainerProperty("text", String.class, "");
+        treeC.addContainerProperty("groupName", String.class, "");
+        treeC.setItemCaptionPropertyId("text");
+
+        // Add an empty group
+        hierarchicalContainer.addItem("Put items here");
+        hierarchicalContainer.getItem("Put items here").getItemProperty("text").setValue("Put items here");
+        hierarchicalContainer.setChildrenAllowed("Put items here", true);
+        treeC.expandItem("Put items here");
+
+        treeC.setDropHandler(new DropHandler() {
             @Override
             public void drop(DragAndDropEvent dragAndDropEvent) {
                 final DataBoundTransferable dataBoundTransferable = (DataBoundTransferable) dragAndDropEvent.getTransferable();
-                if(!(dataBoundTransferable.getSourceContainer() instanceof Container.Hierarchical)) {
-                    return;
-                }
-
-                final HierarchicalContainer sourceContainer = (HierarchicalContainer)dataBoundTransferable.getSourceContainer();
+                // Check if source is of the same container kind as the target
+                if(!(dataBoundTransferable.getSourceContainer() instanceof Container.Hierarchical)) return;
+                // Get the source container
+                final HierarchicalContainer sourceContainer = (HierarchicalContainer) dataBoundTransferable.getSourceContainer();
+                // The item that was dragged into the target
                 final Object sourceItemId = dataBoundTransferable.getItemId();
                 String text = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+                // The parent item id of the item that was dragged
                 final Object parentItemId = sourceContainer.getParent(sourceItemId);
-                final LinkedHashMap<Object, TableItem> linkedHashMap = new LinkedHashMap<>();
-                if(parentItemId == null) {
-                    final Collection<?> children = sourceContainer.getChildren(sourceItemId);
-                    if(children != null) {
-                        for (final Object childId : children) {
-                            String childText = sourceContainer.getItem(childId).getItemProperty("text").getValue().toString();
-                            linkedHashMap.put(childId, new TableItem((String) sourceItemId, childText));
-                        }
-                    }
-                } else {
-                    linkedHashMap.put(sourceItemId, new TableItem((String) parentItemId, text));
-                }
-
+                //Get further information about the drop event
                 final AbstractSelect.AbstractSelectTargetDetails dropData = ((AbstractSelect.AbstractSelectTargetDetails) dragAndDropEvent.getTargetDetails());
-                final Object targetItemId = dropData.getItemIdOver();
-
-                for(final Object sourceId : linkedHashMap.keySet()) {
-                    final TableItem tableItem = linkedHashMap.get(sourceId);
-                    if(targetItemId != null) {
-                        switch(dropData.getDropLocation()) {
-                            case BOTTOM:
-                                beanItemContainer.addItemAfter(targetItemId, linkedHashMap);
-                                break;
-                            case MIDDLE:
-                            case TOP:
-                                final Object prevItemId = beanItemContainer.prevItemId(targetItemId);
-                                beanItemContainer.addItemAfter(prevItemId, linkedHashMap);
-                                break;
+                final VerticalDropLocation verticalDropLocation = dropData.getDropLocation();
+                if(verticalDropLocation == VerticalDropLocation.TOP) {
+                    // Case: Something was dropped above an item
+                } else if(verticalDropLocation == VerticalDropLocation.MIDDLE) {
+                    // Case: Something was dropped on an item
+                    List<String> listOfStringsAlreadyInsideTheContainer = new ArrayList<>();
+                    // Terrible way to determine duplicates btw
+                    listOfStringsAlreadyInsideTheContainer.addAll(hierarchicalContainer.getItemIds().stream().map(itemId -> hierarchicalContainer.getItem(itemId).getItemProperty("text").getValue().toString() + hierarchicalContainer.getItem(itemId).getItemProperty("groupName").getValue().toString()).collect(Collectors.toList()));
+                    if(Objects.isNull(parentItemId)) {
+                        // Item is a node itself
+                        final Collection<?> children = sourceContainer.getChildren(sourceItemId);
+                        if(!Objects.isNull(children)) {
+                            children.forEach(child -> {
+                                String childText = sourceContainer.getItem(child).getItemProperty("text").getValue().toString();
+                                String groupName = (String) sourceItemId;
+                                if(listOfStringsAlreadyInsideTheContainer.contains(childText + groupName)) return;
+                                Object itemId = hierarchicalContainer.addItem();
+                                if(!hierarchicalContainer.areChildrenAllowed(dropData.getItemIdOver())) {
+                                    // Case: Items aren't allowed to be dropped as children, put them in standard group
+                                    hierarchicalContainer.setParent(itemId, "Put items here");
+                                    hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(childText);
+                                    hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(groupName);
+                                    hierarchicalContainer.setChildrenAllowed(itemId, false);
+                                } else {
+                                    // Case: Items are allowed to be dropped as children
+                                    hierarchicalContainer.setParent(itemId, dropData.getItemIdOver());
+                                    hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(childText);
+                                    hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(groupName);
+                                    hierarchicalContainer.setChildrenAllowed(itemId, false);
+                                }
+                            });
                         }
                     } else {
-                        beanItemContainer.addItem(tableItem);
+                        // Item is just an item
+                        if(listOfStringsAlreadyInsideTheContainer.contains(text + parentItemId)) return;
+                        Object itemId = hierarchicalContainer.addItem();
+                        if(hierarchicalContainer.areChildrenAllowed(dropData.getItemIdOver())) {
+                            // Case: Items are allowed to be dropped as children
+                            hierarchicalContainer.setParent(itemId, dropData.getItemIdOver());
+                            hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(text);
+                            hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(parentItemId);
+                            hierarchicalContainer.setChildrenAllowed(itemId, false);
+                        } else {
+                            // Case: Items aren't allowed to be dropped as children, put them in standard group
+                            hierarchicalContainer.setParent(itemId, "Put items here");
+                            hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(text);
+                            hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(parentItemId);
+                            hierarchicalContainer.setChildrenAllowed(itemId, false);
+                        }
                     }
-                    sourceContainer.removeItem(sourceId);
+                } else if(verticalDropLocation == VerticalDropLocation.BOTTOM) {
+                    // Case: Something was dropped under an item
+
                 }
             }
 
             @Override
             public AcceptCriterion getAcceptCriterion() {
-                return new And(clientSideCriterion, AbstractSelect.AcceptItem.ALL);
+//                return new And(clientSideCriterion, Tree.TargetItemAllowsChildren.get(), AbstractSelect.AcceptItem.ALL);
+                return AcceptAll.get();
             }
         });
+    }
+
+    private void setupContainer(GroupOfItems groupOfItems, HierarchicalContainer hierarchicalContainer, Tree tree) {
+        String groupName = groupOfItems.getGroupName();
+        hierarchicalContainer.addItem(groupName);
+        hierarchicalContainer.getItem(groupName).getItemProperty("text").setValue(groupName);
+        if(groupOfItems.getListOfItems().size() == 0) {
+            // Case: Node has no child elements
+            hierarchicalContainer.setChildrenAllowed(groupName, false);
+        } else {
+            // Case: Node has child elements
+            groupOfItems.getListOfItems().forEach(item -> {
+                String itemName = item.getText();
+                hierarchicalContainer.addItem(itemName);
+                hierarchicalContainer.getItem(itemName).getItemProperty("text").setValue(itemName);
+                hierarchicalContainer.setParent(itemName, groupName);
+                hierarchicalContainer.setChildrenAllowed(itemName, false);
+            });
+
+            tree.expandItemsRecursively(groupName);
+        }
     }
 
     @AllArgsConstructor
@@ -283,18 +239,7 @@ public class MainView extends HorizontalLayout implements View {
 
     }
 
-    public Table getTable() {
-        if(Objects.isNull(table)) {
-            table = new Table("Table");
-            table.setWidth(100.0f, Unit.PERCENTAGE);
-            table.setHeight(300.0f, Unit.PIXELS);
-            table.setDragMode(Table.TableDragMode.ROW);
-        }
-
-        return table;
-    }
-
-    public Tree getTreeA() {
+    private Tree getTreeA() {
         if(Objects.isNull(treeA)) {
             treeA = new Tree("Tree A");
             treeA.setSelectable(false);
@@ -304,7 +249,7 @@ public class MainView extends HorizontalLayout implements View {
         return treeA;
     }
 
-    public Tree getTreeB() {
+    private Tree getTreeB() {
         if(Objects.isNull(treeB)) {
             treeB = new Tree("Tree B");
             treeB.setSelectable(false);
@@ -313,5 +258,14 @@ public class MainView extends HorizontalLayout implements View {
 
         return treeB;
     }
-}
 
+    private Tree getTreeC() {
+        if(Objects.isNull(treeC)) {
+            treeC = new Tree("Tree C");
+            treeC.setSelectable(false);
+            treeC.setDragMode(Tree.TreeDragMode.NODE);
+        }
+
+        return treeC;
+    }
+}
