@@ -16,18 +16,19 @@ import com.vaadin.spring.annotation.SpringView;
 import com.vaadin.spring.annotation.ViewScope;
 import com.vaadin.ui.AbstractSelect;
 import com.vaadin.ui.HorizontalLayout;
+import com.vaadin.ui.Notification;
 import com.vaadin.ui.Tree;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
 import javax.annotation.PostConstruct;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Created by cgew85 on 06.05.2016.
+ */
 @SpringView(name = MainView.VIEW_NAME)
 @ViewScope
 public class MainView extends HorizontalLayout implements View {
@@ -110,7 +111,7 @@ public class MainView extends HorizontalLayout implements View {
 
         // Add an empty group
         hierarchicalContainer.addItem("defaultGroup");
-        hierarchicalContainer.getItem("defaultGroup").getItemProperty("text").setValue("Put items here");
+        hierarchicalContainer.getItem("defaultGroup").getItemProperty("text").setValue("Drag and drop items here");
         hierarchicalContainer.setChildrenAllowed("defaultGroup", true);
         treeC.expandItem("defaultGroup");
 
@@ -130,8 +131,38 @@ public class MainView extends HorizontalLayout implements View {
                 //Get further information about the drop event
                 final AbstractSelect.AbstractSelectTargetDetails dropData = ((AbstractSelect.AbstractSelectTargetDetails) dragAndDropEvent.getTargetDetails());
                 final VerticalDropLocation verticalDropLocation = dropData.getDropLocation();
-                if(verticalDropLocation == VerticalDropLocation.TOP) {
-                    // Case: Something was dropped above an item
+                if(verticalDropLocation == VerticalDropLocation.TOP || verticalDropLocation == VerticalDropLocation.BOTTOM) {
+                    // Case: Something was dropped above order under an item
+                    // Check if item is a group or an item
+                    if(isItemAGroup(sourceContainer, sourceItemId)) {
+                        // Item is a group
+                        // Check if group is already present in the target tree
+                        if(isGroupAlreadyPresent(sourceContainer, hierarchicalContainer, sourceItemId)) {
+                            // Group is already present in the tree
+                            // Add items as children of that group
+                            final Optional<Object> targetParentItemId = getParentItemIdForGivenItem(hierarchicalContainer, sourceContainer, sourceItemId);
+                            if(targetParentItemId.isPresent()) {
+                                for(Object sourceChildItemId : sourceContainer.getChildren(sourceItemId)) {
+                                    final Object newItemId = hierarchicalContainer.addItem();
+                                    final String sourceText = sourceContainer.getItem(sourceChildItemId).getItemProperty("text").getValue().toString();
+                                    final String sourceGroupName = sourceContainer.getItem(sourceChildItemId).getItemProperty("groupName").getValue().toString();
+                                    hierarchicalContainer.getItem(newItemId).getItemProperty("text").setValue(sourceText);
+                                    hierarchicalContainer.getItem(newItemId).getItemProperty("groupName").setValue(sourceGroupName);
+                                    hierarchicalContainer.setChildrenAllowed(newItemId, false);
+                                    hierarchicalContainer.setParent(newItemId, targetParentItemId.get());
+                                }
+                            } else {
+                                Notification.show("Error");
+                            }
+                        } else {
+                            // Group is not present in the tree
+                            final Object newGroupId = addGroupToTargetContainer(hierarchicalContainer, sourceContainer, sourceItemId);
+                            treeC.expandItem(newGroupId);
+                        }
+                    } else {
+                        // Item is an item
+                    }
+
                 } else if(verticalDropLocation == VerticalDropLocation.MIDDLE) {
                     // Case: Something was dropped on an item
                     List<String> listOfStringsAlreadyInsideTheContainer = new ArrayList<>();
@@ -179,10 +210,11 @@ public class MainView extends HorizontalLayout implements View {
                             hierarchicalContainer.setChildrenAllowed(itemId, false);
                         }
                     }
-                } else if(verticalDropLocation == VerticalDropLocation.BOTTOM) {
-                    // Case: Something was dropped under an item
-
                 }
+
+                // Remove crap
+                List<Object> itemIdsToRemove = hierarchicalContainer.rootItemIds().stream().filter(itemId -> !hierarchicalContainer.hasChildren(itemId)).collect(Collectors.toList());
+                itemIdsToRemove.forEach(itemId -> hierarchicalContainer.removeItem(itemId));
             }
 
             @Override
@@ -193,8 +225,80 @@ public class MainView extends HorizontalLayout implements View {
         });
     }
 
+    /**
+     * Add a group from a source container to a target container.
+     *
+     * @param targetContainer
+     * @param sourceContainer
+     * @param sourceItemId
+     * @return Object itemId of the group item
+     */
+    private Object addGroupToTargetContainer(final Container.Hierarchical targetContainer, final Container.Hierarchical sourceContainer, final Object sourceItemId) {
+        final List<Item> listOfItems = new ArrayList<>();
+        final String targetGroupName = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+        for(Object childItemId : sourceContainer.getChildren(sourceItemId)) {
+            String childText = sourceContainer.getItem(childItemId).getItemProperty("text").getValue().toString();
+            listOfItems.add(new Item(childText));
+        }
+
+        // Add new group to target tree
+        final Object parentItemId = targetContainer.addItem();
+        targetContainer.getItem(parentItemId).getItemProperty("text").setValue(targetGroupName);
+        targetContainer.setChildrenAllowed(parentItemId, true);
+
+        // Add items to created group
+        for(Item item : listOfItems) {
+            Object newItemId = targetContainer.addItem();
+            targetContainer.setParent(newItemId, parentItemId);
+            targetContainer.setChildrenAllowed(newItemId, false);
+            targetContainer.getItem(newItemId).getItemProperty("text").setValue(item.getText());
+            targetContainer.getItem(newItemId).getItemProperty("groupName").setValue(targetGroupName);
+        }
+
+        return parentItemId;
+    }
+
+    private Optional<Object> getParentItemIdForGivenItem(final Container.Hierarchical targetContainer, final Container.Hierarchical sourceContainer, final Object sourceItemId) {
+        final String sourceParentGroupName = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+        for(Object targetParentItemId : targetContainer.rootItemIds()) {
+            if(targetContainer.getItem(targetParentItemId).getItemProperty("text").getValue().toString().equals(sourceParentGroupName)) {
+                return Optional.of(targetContainer.getItem(targetParentItemId));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * If true the source item doesn't have a parent item, so it is a node itself.
+     * If false the source item has a parent and is therefore a child element of a node.
+     *
+     * @param sourceContainer
+     * @param sourceItemId
+     * @return
+     */
+    private boolean isItemAGroup(final Container.Hierarchical sourceContainer, final Object sourceItemId) {
+        return Objects.isNull(sourceContainer.getParent(sourceItemId));
+    }
+
+    /**
+     * If true the group is already in the target list.
+     *
+     * @param targetContainer
+     * @param sourceItemId
+     * @return
+     */
+    private boolean isGroupAlreadyPresent(final Container.Hierarchical sourceContainer, final Container.Hierarchical targetContainer, final Object sourceItemId) {
+        for(Object rootItemId : targetContainer.rootItemIds()) {
+            String targetContainerGroupName = targetContainer.getItem(rootItemId).getItemProperty("text").getValue().toString();
+            String sourceItemGroupName = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+            if(targetContainerGroupName.equals(sourceItemGroupName)) return true;
+        }
+
+        return false;
+    }
+
     private void setupContainer(GroupOfItems groupOfItems, HierarchicalContainer hierarchicalContainer, Tree tree) {
-        String groupName = groupOfItems.getGroupName();
+        final String groupName = groupOfItems.getGroupName();
         hierarchicalContainer.addItem(groupName);
         hierarchicalContainer.getItem(groupName).getItemProperty("text").setValue(groupName);
         if(groupOfItems.getListOfItems().size() == 0) {
