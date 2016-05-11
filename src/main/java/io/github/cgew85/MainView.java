@@ -28,11 +28,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * Bilstein Group / Central Service Solutions
- * poc_vaadin_dnd
- * Created on 03.05.2016.
- */
 @SpringView(name = MainView.VIEW_NAME)
 @ViewScope
 public class MainView extends HorizontalLayout implements View {
@@ -114,10 +109,10 @@ public class MainView extends HorizontalLayout implements View {
         treeC.setItemCaptionPropertyId("text");
 
         // Add an empty group
-        hierarchicalContainer.addItem("Put items here");
-        hierarchicalContainer.getItem("Put items here").getItemProperty("text").setValue("Put items here");
-        hierarchicalContainer.setChildrenAllowed("Put items here", true);
-        treeC.expandItem("Put items here");
+        hierarchicalContainer.addItem("defaultGroup");
+        hierarchicalContainer.getItem("defaultGroup").getItemProperty("text").setValue("Put items here");
+        hierarchicalContainer.setChildrenAllowed("defaultGroup", true);
+        treeC.expandItem("defaultGroup");
 
         treeC.setDropHandler(new DropHandler() {
             @Override
@@ -153,7 +148,7 @@ public class MainView extends HorizontalLayout implements View {
                                 Object itemId = hierarchicalContainer.addItem();
                                 if(!hierarchicalContainer.areChildrenAllowed(dropData.getItemIdOver())) {
                                     // Case: Items aren't allowed to be dropped as children, put them in standard group
-                                    hierarchicalContainer.setParent(itemId, "Put items here");
+                                    hierarchicalContainer.setParent(itemId, "defaultGroup");
                                     hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(childText);
                                     hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(groupName);
                                     hierarchicalContainer.setChildrenAllowed(itemId, false);
@@ -178,7 +173,7 @@ public class MainView extends HorizontalLayout implements View {
                             hierarchicalContainer.setChildrenAllowed(itemId, false);
                         } else {
                             // Case: Items aren't allowed to be dropped as children, put them in standard group
-                            hierarchicalContainer.setParent(itemId, "Put items here");
+                            hierarchicalContainer.setParent(itemId, "defaultGroup");
                             hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(text);
                             hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(parentItemId);
                             hierarchicalContainer.setChildrenAllowed(itemId, false);
