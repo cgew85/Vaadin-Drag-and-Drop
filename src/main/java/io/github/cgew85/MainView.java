@@ -125,9 +125,6 @@ public class MainView extends HorizontalLayout implements View {
                 final HierarchicalContainer sourceContainer = (HierarchicalContainer) dataBoundTransferable.getSourceContainer();
                 // The item that was dragged into the target
                 final Object sourceItemId = dataBoundTransferable.getItemId();
-                String text = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
-                // The parent item id of the item that was dragged
-                final Object parentItemId = sourceContainer.getParent(sourceItemId);
                 //Get further information about the drop event
                 final AbstractSelect.AbstractSelectTargetDetails dropData = ((AbstractSelect.AbstractSelectTargetDetails) dragAndDropEvent.getTargetDetails());
                 final VerticalDropLocation verticalDropLocation = dropData.getDropLocation();
@@ -161,60 +158,105 @@ public class MainView extends HorizontalLayout implements View {
                         }
                     } else {
                         // Item is an item
+                        // Dropping items between things isnt supported
                     }
 
                 } else if(verticalDropLocation == VerticalDropLocation.MIDDLE) {
-                    // Case: Something was dropped on an item
-                    List<String> listOfStringsAlreadyInsideTheContainer = new ArrayList<>();
-                    // Terrible way to determine duplicates btw
-                    listOfStringsAlreadyInsideTheContainer.addAll(hierarchicalContainer.getItemIds().stream().map(itemId -> hierarchicalContainer.getItem(itemId).getItemProperty("text").getValue().toString() + hierarchicalContainer.getItem(itemId).getItemProperty("groupName").getValue().toString()).collect(Collectors.toList()));
-                    if(Objects.isNull(parentItemId)) {
-                        // Item is a node itself
-                        final Collection<?> children = sourceContainer.getChildren(sourceItemId);
-                        if(!Objects.isNull(children)) {
-                            children.forEach(child -> {
-                                String childText = sourceContainer.getItem(child).getItemProperty("text").getValue().toString();
-                                String groupName = (String) sourceItemId;
-                                if(listOfStringsAlreadyInsideTheContainer.contains(childText + groupName)) return;
-                                Object itemId = hierarchicalContainer.addItem();
-                                if(!hierarchicalContainer.areChildrenAllowed(dropData.getItemIdOver())) {
-                                    // Case: Items aren't allowed to be dropped as children, put them in standard group
-                                    hierarchicalContainer.setParent(itemId, "defaultGroup");
-                                    hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(childText);
-                                    hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(groupName);
-                                    hierarchicalContainer.setChildrenAllowed(itemId, false);
-                                } else {
-                                    // Case: Items are allowed to be dropped as children
-                                    hierarchicalContainer.setParent(itemId, dropData.getItemIdOver());
-                                    hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(childText);
-                                    hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(groupName);
-                                    hierarchicalContainer.setChildrenAllowed(itemId, false);
+                    // Case: Something was dropped on item
+                    // Check if the dropped item is a group or a single item
+                    if(isItemAGroup(sourceContainer, sourceItemId)) {
+                        // Item is a group
+                        // Check if drop target is a group
+                        if(isItemAGroup(hierarchicalContainer, dropData.getItemIdOver())) {
+                            // Drop target is a group
+                            // Get all children of the source item
+                            for(Object sourceChildItemId : sourceContainer.getChildren(sourceItemId)) {
+                                Object newItemId = hierarchicalContainer.addItem();
+                                String newItemText = sourceContainer.getItem(sourceChildItemId).getItemProperty("text").getValue().toString();
+                                String newItemGroupName = sourceContainer.getItem(sourceChildItemId).getItemProperty("groupName").getValue().toString();
+                                hierarchicalContainer.getItem(newItemId).getItemProperty("text").setValue(newItemText);
+                                hierarchicalContainer.getItem(newItemId).getItemProperty("groupName").setValue(newItemGroupName);
+                                hierarchicalContainer.setParent(newItemId, dropData.getItemIdOver());
+                                hierarchicalContainer.setChildrenAllowed(newItemId, false);
+                            }
+                        } else {
+                            // Drop target is an item
+                            // Get the parent of the drop target item
+                            final Object targetParentItemId = hierarchicalContainer.getParent(dropData.getItemIdOver());
+                            if(!Objects.isNull(targetParentItemId)) {
+                                for(Object sourceChildItemId : sourceContainer.getChildren(sourceItemId)) {
+                                    Object newItemId = hierarchicalContainer.addItem();
+                                    String newItemText = sourceContainer.getItem(sourceChildItemId).getItemProperty("text").getValue().toString();
+                                    String newItemGroupName = sourceContainer.getItem(sourceChildItemId).getItemProperty("groupName").getValue().toString();
+                                    hierarchicalContainer.getItem(newItemId).getItemProperty("text").setValue(newItemText);
+                                    hierarchicalContainer.getItem(newItemId).getItemProperty("groupName").setValue(newItemGroupName);
+                                    hierarchicalContainer.setParent(newItemId, targetParentItemId);
+                                    hierarchicalContainer.setChildrenAllowed(newItemId, false);
                                 }
-                            });
+                            }
                         }
                     } else {
                         // Item is just an item
-                        if(listOfStringsAlreadyInsideTheContainer.contains(text + parentItemId)) return;
-                        Object itemId = hierarchicalContainer.addItem();
-                        if(hierarchicalContainer.areChildrenAllowed(dropData.getItemIdOver())) {
-                            // Case: Items are allowed to be dropped as children
-                            hierarchicalContainer.setParent(itemId, dropData.getItemIdOver());
-                            hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(text);
-                            hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(parentItemId);
-                            hierarchicalContainer.setChildrenAllowed(itemId, false);
+                        // Determine if item was dropped on a group or on an item
+                        if(isItemAGroup(hierarchicalContainer, dropData.getItemIdOver())) {
+                            // Drop target is a group
+                            final Object newItemId = hierarchicalContainer.addItem();
+                            final String itemText = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+                            final String itemGroupName = sourceContainer.getItem(sourceItemId).getItemProperty("groupName").getValue().toString();
+                            hierarchicalContainer.getItem(newItemId).getItemProperty("text").setValue(itemText);
+                            hierarchicalContainer.getItem(newItemId).getItemProperty("groupName").setValue(itemGroupName);
+                            hierarchicalContainer.setParent(newItemId, dropData.getItemIdOver());
+                            hierarchicalContainer.setChildrenAllowed(newItemId, false);
                         } else {
-                            // Case: Items aren't allowed to be dropped as children, put them in standard group
-                            hierarchicalContainer.setParent(itemId, "defaultGroup");
-                            hierarchicalContainer.getItem(itemId).getItemProperty("text").setValue(text);
-                            hierarchicalContainer.getItem(itemId).getItemProperty("groupName").setValue(parentItemId);
-                            hierarchicalContainer.setChildrenAllowed(itemId, false);
+                            // Drop target is an item
+                            final Object targetParentItemId = hierarchicalContainer.getParent(dropData.getItemIdOver());
+                            if(Objects.nonNull(targetParentItemId)) {
+                                final Object newItemId = hierarchicalContainer.addItem();
+                                final String itemText = sourceContainer.getItem(sourceItemId).getItemProperty("text").getValue().toString();
+                                final String itemGroupName = sourceContainer.getItem(sourceItemId).getItemProperty("groupName").getValue().toString();
+                                hierarchicalContainer.getItem(newItemId).getItemProperty("text").setValue(itemText);
+                                hierarchicalContainer.getItem(newItemId).getItemProperty("groupName").setValue(itemGroupName);
+                                hierarchicalContainer.setParent(newItemId, targetParentItemId);
+                                hierarchicalContainer.setChildrenAllowed(newItemId, false);
+                            }
                         }
                     }
                 }
 
-                // Remove crap
+                // Remove empty groups
                 List<Object> itemIdsToRemove = hierarchicalContainer.rootItemIds().stream().filter(itemId -> !hierarchicalContainer.hasChildren(itemId)).collect(Collectors.toList());
-                itemIdsToRemove.forEach(itemId -> hierarchicalContainer.removeItem(itemId));
+                if(itemIdsToRemove.size() > 1) itemIdsToRemove.forEach(itemId -> hierarchicalContainer.removeItem(itemId));
+
+                // Remove duplicate groups
+                Set<String> setOfRootNames = new HashSet<>();
+                itemIdsToRemove.clear();
+
+                for(Object rootItemId : hierarchicalContainer.rootItemIds()) {
+                    String visibleItemName = hierarchicalContainer.getItem(rootItemId).getItemProperty("text").getValue().toString();
+                    if(!setOfRootNames.contains(visibleItemName)) {
+                        setOfRootNames.add(visibleItemName);
+                    } else {
+                        itemIdsToRemove.add(rootItemId);
+                    }
+                }
+                itemIdsToRemove.forEach(hierarchicalContainer::removeItem);
+
+                // Remove duplicate children
+                itemIdsToRemove.clear();
+                for(Object rootItemId : hierarchicalContainer.rootItemIds()) {
+                    Set<String> setOfChildNames = new HashSet<>();
+                    if(!Objects.isNull(hierarchicalContainer.getChildren(rootItemId))) {
+                        for(Object childId : hierarchicalContainer.getChildren(rootItemId)) {
+                            String childName = hierarchicalContainer.getItem(childId).getItemProperty("text").getValue().toString();
+                            if(setOfChildNames.contains(childName)) {
+                                itemIdsToRemove.add(childId);
+                            } else {
+                                setOfChildNames.add(childName);
+                            }
+                        }
+                    }
+                }
+                itemIdsToRemove.forEach(hierarchicalContainer::removeItem);
             }
 
             @Override
