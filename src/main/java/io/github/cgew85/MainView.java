@@ -11,13 +11,11 @@ import com.vaadin.event.dd.acceptcriteria.ClientSideCriterion;
 import com.vaadin.event.dd.acceptcriteria.SourceIs;
 import com.vaadin.navigator.View;
 import com.vaadin.navigator.ViewChangeListener;
+import com.vaadin.server.FontAwesome;
 import com.vaadin.shared.ui.dd.VerticalDropLocation;
 import com.vaadin.spring.annotation.SpringView;
 import com.vaadin.spring.annotation.ViewScope;
-import com.vaadin.ui.AbstractSelect;
-import com.vaadin.ui.HorizontalLayout;
-import com.vaadin.ui.Notification;
-import com.vaadin.ui.Tree;
+import com.vaadin.ui.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -38,6 +36,7 @@ public class MainView extends HorizontalLayout implements View {
     private Tree treeA;
     private Tree treeB;
     private Tree treeC;
+    private Label label;
 
     @Override
     public void enter(ViewChangeListener.ViewChangeEvent viewChangeEvent) {
@@ -49,13 +48,46 @@ public class MainView extends HorizontalLayout implements View {
         setSpacing(true);
         setSizeFull();
 
+        final DragAndDropWrapper dragAndDropWrapper = new DragAndDropWrapper(getLabel());
         addComponent(getTreeA());
         addComponent(getTreeB());
         addComponent(getTreeC());
+        addComponent(dragAndDropWrapper);
 
         initializeTreeA();
         initializeTreeB();
         initializeTreeC(new SourceIs(getTreeA(), getTreeB()));
+        initializeLabel(dragAndDropWrapper);
+    }
+
+    private void initializeLabel(final DragAndDropWrapper dragAndDropWrapper) {
+        dragAndDropWrapper.setDropHandler(new DropHandler() {
+            @Override
+            public void drop(DragAndDropEvent dragAndDropEvent) {
+                DataBoundTransferable dataBoundTransferable = (DataBoundTransferable) dragAndDropEvent.getTransferable();
+                if(!(dataBoundTransferable.getSourceContainer().equals(treeC.getContainerDataSource()))) return;
+                final Container.Hierarchical sourceContainer = (Container.Hierarchical) dataBoundTransferable.getSourceContainer();
+                sourceContainer.removeItem(dataBoundTransferable.getItemId());
+
+                // Remove root ids without children
+                List<Object> itemIdsToRemove = sourceContainer.rootItemIds().stream().filter(itemId -> !sourceContainer.hasChildren(itemId)).collect(Collectors.toList());
+                if(itemIdsToRemove.size() > 1) itemIdsToRemove.forEach(itemId -> sourceContainer.removeItem(itemId));
+
+                // Rare case
+                if(sourceContainer.rootItemIds().size() == 0) {
+                    // Add an empty group
+                    sourceContainer.addItem("defaultGroup");
+                    sourceContainer.getItem("defaultGroup").getItemProperty("text").setValue("Drag and drop items here");
+                    sourceContainer.setChildrenAllowed("defaultGroup", true);
+                    treeC.expandItem("defaultGroup");
+                }
+            }
+
+            @Override
+            public AcceptCriterion getAcceptCriterion() {
+                return AcceptAll.get();
+            }
+        });
     }
 
     private void initializeTreeA() {
@@ -183,7 +215,7 @@ public class MainView extends HorizontalLayout implements View {
                             // Drop target is an item
                             // Get the parent of the drop target item
                             final Object targetParentItemId = hierarchicalContainer.getParent(dropData.getItemIdOver());
-                            if(!Objects.isNull(targetParentItemId)) {
+                            if(Objects.nonNull(targetParentItemId)) {
                                 for(Object sourceChildItemId : sourceContainer.getChildren(sourceItemId)) {
                                     Object newItemId = hierarchicalContainer.addItem();
                                     String newItemText = sourceContainer.getItem(sourceChildItemId).getItemProperty("text").getValue().toString();
@@ -245,7 +277,7 @@ public class MainView extends HorizontalLayout implements View {
                 itemIdsToRemove.clear();
                 for(Object rootItemId : hierarchicalContainer.rootItemIds()) {
                     Set<String> setOfChildNames = new HashSet<>();
-                    if(!Objects.isNull(hierarchicalContainer.getChildren(rootItemId))) {
+                    if(Objects.nonNull(hierarchicalContainer.getChildren(rootItemId))) {
                         for(Object childId : hierarchicalContainer.getChildren(rootItemId)) {
                             String childName = hierarchicalContainer.getItem(childId).getItemProperty("text").getValue().toString();
                             if(setOfChildNames.contains(childName)) {
@@ -408,5 +440,15 @@ public class MainView extends HorizontalLayout implements View {
         }
 
         return treeC;
+    }
+
+    private Label getLabel() {
+        if(Objects.isNull(label)) {
+            label = new Label("Drag items here to remove them");
+            label.setIcon(FontAwesome.TRASH);
+            label.setCaption("");
+        }
+
+        return label;
     }
 }
